@@ -1,0 +1,1568 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>RASTRA — NHAI Road Analysis & Safety Tracking for Reflective Assessment</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@400;500;600;700&family=IBM+Plex+Mono:wght@300;400;500&family=Inter:wght@300;400;500&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script src="https://unpkg.com/leaflet.heat@0.2.0/dist/leaflet-heat.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.31/jspdf.plugin.autotable.min.js"></script>
+<style>
+/* ============================================================
+   RASTRA v4 — Road Analysis & Safety Tracking for Reflective Assessment
+   NHAI Retroreflectivity Inspection | IRC 67:2012 · IRC 35:2015
+   BLE Instrument · 2.2 m Multi-Channel Scan · GPS Road-Tracked
+============================================================ */
+:root{
+  --bg:#07090D;--surf:#0C1018;--card:#111820;--ch:#18222E;
+  --b:#1C2A38;--bl:#263848;
+  --amber:#F0A020;--ag:rgba(240,160,32,.13);
+  --green:#14C864;--gg:rgba(20,200,100,.08);
+  --red:#F04040;--rg:rgba(240,64,64,.08);
+  --blue:#3888F0;--purple:#8855E0;--orange:#F07030;
+  --t:#D8E8F8;--td:#7A94A8;--tm:#405060;
+  --mono:'IBM Plex Mono',monospace;--ui:'Inter',sans-serif;--hd:'Rajdhani',sans-serif;
+  --lw:288px;--rw:264px;--hh:50px;--r:6px;
+}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--t);font-family:var(--ui);font-size:13px;line-height:1.4}
+a{color:inherit;text-decoration:none}
+#app{display:flex;flex-direction:column;height:100vh}
+
+/* ── HEADER ─────────────────────────────────────── */
+#hdr{height:var(--hh);background:var(--surf);border-bottom:1px solid var(--b);
+  display:flex;align-items:center;padding:0 12px;gap:9px;flex-shrink:0;z-index:200}
+#logo{display:flex;align-items:center;gap:8px;white-space:nowrap;flex-shrink:0}
+.lbadge{background:linear-gradient(135deg,#F0A020 0%,#D03010 100%);color:#fff;
+  font-family:var(--hd);font-size:13px;font-weight:700;letter-spacing:.14em;
+  padding:2px 7px;border-radius:3px;flex-shrink:0}
+.lname{font-family:var(--hd);font-size:20px;font-weight:700;letter-spacing:.06em;
+  color:var(--amber);text-transform:uppercase;line-height:1}
+.lsub{font-size:7.5px;color:var(--tm);letter-spacing:.13em;text-transform:uppercase;line-height:1.3;max-width:148px}
+.hspace{flex:1}
+.hpill{display:flex;align-items:center;gap:5px;background:var(--card);border:1px solid var(--b);
+  border-radius:20px;padding:3px 10px 3px 7px;font-family:var(--mono);font-size:10px;color:var(--td);
+  cursor:pointer;transition:border-color .18s;white-space:nowrap;user-select:none}
+.hpill:hover{border-color:var(--bl)}
+.dot{width:6px;height:6px;border-radius:50%;background:var(--tm);flex-shrink:0;transition:all .25s}
+.dot.on{background:var(--green);box-shadow:0 0 6px var(--green)}
+.dot.warn{background:var(--amber);animation:blink 1s infinite}
+.dot.err{background:var(--red)}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:.2}}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:4px;
+  padding:5px 11px;border-radius:var(--r);border:none;cursor:pointer;
+  font-family:var(--hd);font-size:11px;font-weight:700;letter-spacing:.06em;
+  text-transform:uppercase;transition:all .12s;white-space:nowrap;flex-shrink:0}
+.bp{background:var(--amber);color:#07090D}
+.bp:hover{background:#FFB530;box-shadow:0 0 12px var(--ag)}
+.bg{background:transparent;color:var(--td);border:1px solid var(--b)}
+.bg:hover{border-color:var(--bl);color:var(--t);background:var(--ch)}
+.bsm{padding:4px 9px;font-size:10px}
+.bico{width:27px;height:27px;padding:0;border-radius:5px}
+.htag{font-family:var(--hd);font-size:9px;font-weight:700;letter-spacing:.1em;
+  text-transform:uppercase;padding:2px 6px;border-radius:3px;display:none}
+.htag.show{display:block}
+#tsim{background:rgba(136,85,224,.16);border:1px solid var(--purple);color:#C0A0FF}
+#tdemo{background:rgba(20,200,100,.12);border:1px solid var(--green);color:var(--green)}
+#stimer{font-family:var(--mono);font-size:12px;color:var(--amber);min-width:50px;text-align:center}
+
+/* ── BODY LAYOUT ─────────────────────────────────── */
+#body{display:flex;flex:1;overflow:hidden}
+
+/* ── LEFT ────────────────────────────────────────── */
+#left{width:var(--lw);flex-shrink:0;background:var(--surf);border-right:1px solid var(--b);
+  display:flex;flex-direction:column;overflow-y:auto;overflow-x:hidden}
+#left::-webkit-scrollbar{width:2px}
+#left::-webkit-scrollbar-thumb{background:var(--bl)}
+.sec{padding:10px 13px;border-bottom:1px solid var(--b)}
+.slbl{font-family:var(--hd);font-size:9.5px;font-weight:700;letter-spacing:.18em;
+  text-transform:uppercase;color:var(--tm);margin-bottom:7px}
+
+/* Gauge */
+#gwrap{display:flex;flex-direction:column;align-items:center;padding:12px 13px 8px;border-bottom:1px solid var(--b)}
+#gsvg{width:206px;height:128px}
+#gval{font-family:var(--mono);font-size:36px;font-weight:500;color:var(--amber);
+  line-height:1;margin-top:-4px;text-align:center;transition:color .2s}
+#gval.pass{color:var(--green)}
+#gval.fail{color:var(--red)}
+#gunit{font-family:var(--mono);font-size:8.5px;color:var(--tm);text-align:center;margin-top:1px}
+#gcbadge{display:flex;align-items:center;gap:4px;margin-top:6px;padding:3px 12px;
+  border-radius:20px;font-family:var(--hd);font-size:11px;font-weight:700;
+  letter-spacing:.09em;text-transform:uppercase;transition:all .2s}
+#gcbadge.pass{background:var(--gg);color:var(--green);border:1px solid rgba(20,200,100,.28)}
+#gcbadge.fail{background:var(--rg);color:var(--red);border:1px solid rgba(240,64,64,.28)}
+#gcbadge.idle{background:var(--card);color:var(--tm);border:1px solid var(--b)}
+#ggeom{font-family:var(--mono);font-size:8px;color:var(--tm);margin-top:4px;text-align:center}
+
+/* Conditions */
+#conds{padding:8px 13px;border-bottom:1px solid var(--b);background:rgba(240,160,32,.03)}
+.crow{display:flex;align-items:center;gap:4px;margin-bottom:4px}
+.crow:last-child{margin-bottom:0}
+.clbl{font-size:8.5px;color:var(--tm);font-family:var(--hd);font-weight:600;
+  letter-spacing:.1em;text-transform:uppercase;min-width:50px;flex-shrink:0}
+.cbtn{display:flex;align-items:center;gap:3px;padding:3px 7px;border-radius:4px;
+  border:1px solid var(--b);background:var(--card);color:var(--tm);
+  font-family:var(--hd);font-size:9.5px;font-weight:600;letter-spacing:.06em;
+  text-transform:uppercase;cursor:pointer;transition:all .12s;user-select:none}
+.cbtn.act{border-color:var(--amber);color:var(--amber);background:var(--ag)}
+.cbtn.act.wet{border-color:var(--blue);color:var(--blue);background:rgba(56,136,240,.09)}
+.cbtn.act.ngt{border-color:#7060C0;color:#B0A0F0;background:rgba(112,96,192,.09)}
+.cbtn.act.unl{border-color:var(--tm);color:var(--td);background:rgba(64,80,96,.12)}
+.cbtn.act.fog{border-color:#6090A0;color:#90C0D0;background:rgba(96,144,160,.09)}
+
+/* Form elements */
+.fg{margin-bottom:7px}
+.fg label{display:block;font-family:var(--hd);font-size:9px;font-weight:700;
+  letter-spacing:.13em;text-transform:uppercase;color:var(--tm);margin-bottom:3px}
+select,input[type=text],input[type=number]{width:100%;background:var(--card);
+  border:1px solid var(--b);border-radius:5px;color:var(--t);padding:5px 8px;
+  font-family:var(--ui);font-size:12px;appearance:none;-webkit-appearance:none;
+  transition:border-color .15s}
+select:focus,input:focus{outline:none;border-color:var(--amber);box-shadow:0 0 0 2px var(--ag)}
+#thrbox{background:var(--card);border:1px solid var(--b);border-radius:5px;padding:7px 9px;
+  font-family:var(--mono);font-size:9.5px;line-height:2}
+.thr-r{display:flex;justify-content:space-between;align-items:center}
+.thr-k{color:var(--tm);font-size:9px}
+.thr-v{color:var(--amber);font-weight:500}
+.thr-v.w{color:var(--blue)}
+.thr-div{margin-top:3px;padding-top:4px;border-top:1px solid var(--b)}
+.thr-std{font-size:8.5px;padding:1px 5px;border-radius:3px;font-family:var(--hd);font-weight:700;letter-spacing:.05em}
+.thr-std.pass{background:var(--gg);color:var(--green)}
+.thr-std.fail{background:var(--rg);color:var(--red)}
+
+/* Scan */
+#scanbtn{width:100%;padding:9px;font-size:12px;background:var(--amber);color:#07090D;
+  border:none;border-radius:var(--r);cursor:pointer;font-family:var(--hd);font-weight:700;
+  letter-spacing:.08em;text-transform:uppercase;transition:all .12s;margin-bottom:8px}
+#scanbtn:hover{background:#FFB530;box-shadow:0 0 16px var(--ag)}
+#scanbtn.scanning{background:var(--red);color:#fff}
+#scanbtn.scanning:hover{background:#FF5040}
+.sgrid{display:grid;grid-template-columns:1fr 1fr;gap:5px}
+.scard{background:var(--card);border:1px solid var(--b);border-radius:5px;padding:7px 8px}
+.scard-l{font-family:var(--hd);font-size:8px;font-weight:700;letter-spacing:.12em;
+  text-transform:uppercase;color:var(--tm);margin-bottom:2px}
+.scard-v{font-family:var(--mono);font-size:15px;font-weight:500;color:var(--t);line-height:1.1}
+.scard-v.a{color:var(--amber)}.scard-v.g{color:var(--green)}
+.trow{display:flex;align-items:center;justify-content:space-between;margin-top:6px}
+.tlbl{font-size:11px;color:var(--td)}
+.tog{width:32px;height:18px;background:var(--bl);border-radius:9px;cursor:pointer;
+  position:relative;transition:background .15s;flex-shrink:0}
+.tog.on{background:var(--amber)}
+.tog::after{content:'';position:absolute;top:2px;left:2px;width:14px;height:14px;
+  border-radius:50%;background:#fff;transition:transform .15s;box-shadow:0 1px 3px rgba(0,0,0,.4)}
+.tog.on::after{transform:translateX(14px)}
+
+/* Recent list */
+#rlist{overflow-y:auto;max-height:155px;flex-shrink:0}
+#rlist::-webkit-scrollbar{width:2px}
+#rlist::-webkit-scrollbar-thumb{background:var(--b)}
+.ri{display:flex;align-items:center;gap:6px;padding:5px 13px;border-bottom:1px solid var(--b);
+  cursor:pointer;transition:background .1s;animation:sli .15s ease-out}
+.ri:hover{background:var(--ch)}
+@keyframes sli{from{opacity:0;transform:translateX(-4px)}to{opacity:1;transform:translateX(0)}}
+.ri-n{font-family:var(--mono);font-size:9px;color:var(--tm);min-width:22px}
+.ri-v{font-family:var(--mono);font-size:12px;font-weight:500;flex:1}
+.ri-v.pass{color:var(--green)}.ri-v.fail{color:var(--red)}
+.ri-d{font-family:var(--mono);font-size:9px;color:var(--tm)}
+.ri-c{font-size:8px;color:var(--tm)}
+.ri-dot{width:5px;height:5px;border-radius:50%;flex-shrink:0}
+.ri-dot.pass{background:var(--green)}.ri-dot.fail{background:var(--red)}
+.empty{text-align:center;padding:18px 13px;color:var(--tm);font-size:9.5px;
+  font-family:var(--hd);letter-spacing:.1em;text-transform:uppercase}
+
+/* ── CENTER ──────────────────────────────────────── */
+#ctr{flex:1;display:flex;flex-direction:column;overflow:hidden;min-width:0}
+#tabs{display:flex;align-items:center;background:var(--surf);border-bottom:1px solid var(--b);
+  padding:0 11px;height:38px;gap:2px;flex-shrink:0}
+.tab{padding:0 11px;height:38px;display:flex;align-items:center;font-family:var(--hd);
+  font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--tm);
+  cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-1px;
+  transition:color .12s,border-color .12s;user-select:none}
+.tab:hover{color:var(--td)}
+.tab.act{color:var(--amber);border-bottom-color:var(--amber)}
+.tsp{flex:1}
+#mapctrls{display:flex;gap:5px;align-items:center}
+#mlsel{background:var(--card);border:1px solid var(--b);border-radius:5px;color:var(--td);
+  padding:3px 6px;font-family:var(--hd);font-size:9.5px;font-weight:700;letter-spacing:.06em;
+  text-transform:uppercase;cursor:pointer;appearance:none}
+.tp{display:none;flex:1;overflow:hidden}
+.tp.act{display:flex;flex-direction:column}
+#mapd{width:100%;height:100%}
+#chartwrap{flex:1;padding:12px;display:flex;flex-direction:column}
+#chartin{flex:1;background:var(--card);border:1px solid var(--b);border-radius:var(--r);padding:12px;position:relative}
+#logwrap{flex:1;overflow:auto}
+#logwrap::-webkit-scrollbar{width:5px;height:5px}
+#logwrap::-webkit-scrollbar-thumb{background:var(--bl);border-radius:2px}
+#logtbl{width:100%;border-collapse:collapse;font-size:10px}
+#logtbl th{position:sticky;top:0;z-index:1;background:var(--surf);border-bottom:1px solid var(--b);
+  padding:7px 8px;text-align:left;font-family:var(--hd);font-size:8px;font-weight:700;
+  letter-spacing:.1em;text-transform:uppercase;color:var(--tm)}
+#logtbl td{padding:5px 8px;border-bottom:1px solid var(--b);font-family:var(--mono);
+  font-size:10px;color:var(--td)}
+#logtbl tr:hover td{background:var(--ch)}
+.pass-c{color:var(--green)!important;font-weight:600}
+.fail-c{color:var(--red)!important;font-weight:600}
+.wet-c{color:var(--blue)!important}
+
+/* ── RIGHT ───────────────────────────────────────── */
+#right{width:var(--rw);flex-shrink:0;background:var(--surf);border-left:1px solid var(--b);
+  display:flex;flex-direction:column;overflow-y:auto}
+#right::-webkit-scrollbar{width:2px}
+#right::-webkit-scrollbar-thumb{background:var(--bl)}
+.sg2{display:grid;grid-template-columns:1fr 1fr;gap:5px}
+.stat{background:var(--card);border:1px solid var(--b);border-radius:var(--r);padding:8px}
+.stat-l{font-family:var(--hd);font-size:8px;font-weight:700;letter-spacing:.12em;
+  text-transform:uppercase;color:var(--tm);margin-bottom:2px}
+.stat-v{font-family:var(--mono);font-size:18px;font-weight:500;color:var(--t);line-height:1}
+.stat-v.a{color:var(--amber)}.stat-v.g{color:var(--green)}.stat-v.r{color:var(--red)}.stat-v.sm{font-size:13px!important}
+#donut-svg{width:108px;height:108px}
+#dpct{font-family:var(--mono);font-size:21px;font-weight:500;color:var(--green);text-align:center}
+#dlbl{font-family:var(--hd);font-size:9px;color:var(--tm);letter-spacing:.1em;text-transform:uppercase;text-align:center}
+.leg{display:flex;align-items:center;gap:5px;font-size:11px;color:var(--td);margin-bottom:2px}
+.leg-d{width:7px;height:7px;border-radius:50%;flex-shrink:0}
+#gpsc{background:var(--card);border:1px solid var(--b);border-radius:var(--r);padding:8px}
+.gr{display:flex;justify-content:space-between;font-family:var(--mono);font-size:10px;margin-bottom:2px}
+.gk{color:var(--tm)}.gv{color:var(--td)}
+.cb-row{display:flex;align-items:center;justify-content:space-between;padding:3px 0;
+  border-bottom:1px solid rgba(28,42,56,.6)}
+.cb-k{font-size:11px;color:var(--td)}
+.cb-v{font-family:var(--mono);font-size:11px;color:var(--amber)}
+#expsec{padding:10px 13px;border-top:1px solid var(--b);margin-top:auto}
+#expsec .btn{width:100%;margin-bottom:5px;justify-content:center}
+
+/* ── MODALS ──────────────────────────────────────── */
+.mbg{position:fixed;inset:0;background:rgba(0,0,0,.82);z-index:1000;display:flex;
+  align-items:center;justify-content:center;opacity:0;pointer-events:none;transition:opacity .18s}
+.mbg.open{opacity:1;pointer-events:all}
+.modal{background:var(--surf);border:1px solid var(--bl);border-radius:10px;width:470px;
+  max-height:90vh;overflow-y:auto;padding:20px;transform:translateY(6px);transition:transform .18s}
+.modal-sm{width:340px}
+.mbg.open .modal{transform:translateY(0)}
+.mhd{display:flex;align-items:center;justify-content:space-between;margin-bottom:15px}
+.mt{font-family:var(--hd);font-size:16px;font-weight:700;letter-spacing:.05em;
+  text-transform:uppercase;color:var(--amber)}
+.mcl{background:none;border:none;color:var(--tm);cursor:pointer;font-size:17px;line-height:1}
+.mcl:hover{color:var(--t)}
+.msec{font-family:var(--hd);font-size:9px;font-weight:700;letter-spacing:.16em;
+  text-transform:uppercase;color:var(--tm);margin:12px 0 5px}
+.mft{display:flex;gap:7px;justify-content:flex-end;margin-top:15px}
+.irct{width:100%;border-collapse:collapse;font-size:10px;margin:3px 0}
+.irct th{background:var(--card);border:1px solid var(--b);padding:5px 7px;text-align:left;
+  font-family:var(--hd);font-size:8px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--tm)}
+.irct td{border:1px solid var(--b);padding:4px 7px;font-family:var(--mono);font-size:10px;color:var(--td)}
+.irct input{width:54px;padding:2px 4px;text-align:center;font-size:10px}
+.note{font-size:10px;color:var(--tm);line-height:1.65;padding:6px 8px;background:var(--card);
+  border-radius:4px;border-left:2px solid var(--amber);margin-top:4px}
+
+/* ── NOTIFICATION ────────────────────────────────── */
+#notif{position:fixed;top:58px;left:50%;transform:translateX(-50%);background:var(--card);
+  border:1px solid var(--bl);border-radius:6px;padding:7px 14px;font-family:var(--hd);
+  font-size:11px;font-weight:700;letter-spacing:.05em;color:var(--t);z-index:3000;
+  opacity:0;pointer-events:none;transition:opacity .15s,top .15s;white-space:nowrap}
+#notif.show{opacity:1;top:55px}
+#notif.ok{border-color:var(--green);color:var(--green)}
+#notif.err{border-color:var(--red);color:var(--red)}
+#notif.info{border-color:var(--amber);color:var(--amber)}
+
+/* ── LEAFLET ─────────────────────────────────────── */
+.leaflet-container{background:#07090D}
+.leaflet-popup-content-wrapper{background:var(--card);border:1px solid var(--bl);
+  color:var(--t);border-radius:var(--r);box-shadow:0 4px 20px rgba(0,0,0,.65)}
+.leaflet-popup-tip{background:var(--card)}
+.leaflet-popup-close-button{color:var(--tm)!important}
+.leaflet-bar a{background:var(--card)!important;color:var(--t)!important;
+  border-color:var(--b)!important}
+.leaflet-bar a:hover{background:var(--ch)!important}
+::-webkit-scrollbar{width:5px;height:5px}
+::-webkit-scrollbar-thumb{background:var(--bl);border-radius:2px}
+</style>
+</head>
+<body>
+<div id="app">
+
+<!-- ════════════ HEADER ════════════ -->
+<header id="hdr">
+  <div id="logo">
+    <span class="lbadge">NHAI</span>
+    <div>
+      <div class="lname">RASTRA</div>
+      <div class="lsub">Road Analysis &amp; Safety Tracking for Reflective Assessment</div>
+    </div>
+  </div>
+  <div class="hspace"></div>
+  <span id="tsim" class="htag">SIM</span>
+  <span id="tdemo" class="htag">DEMO</span>
+  <span id="stimer">00:00</span>
+  <button id="sbtn" class="btn bp bsm" onclick="toggleSession()">▶ Start</button>
+  <button class="btn bg bsm" onclick="clearAll()">↺ Clear</button>
+  <button class="btn bsm" onclick="openDemoModal()" style="background:rgba(136,85,224,.14);border:1px solid var(--purple);color:#C0A0FF;font-family:var(--hd);font-weight:700;letter-spacing:.06em;text-transform:uppercase">📁 Demo</button>
+  <div class="hpill" onclick="startGPS()"><div class="dot" id="gdot"></div><span id="gtxt">GPS: Off</span></div>
+  <div class="hpill" onclick="openBLE()"><div class="dot" id="bdot"></div><span id="btxt">No Device</span></div>
+  <button class="btn bg bico" onclick="openSettings()" title="Settings">⚙</button>
+</header>
+
+<!-- ════════════ BODY ════════════ -->
+<div id="body">
+
+<!-- ══ LEFT ══ -->
+<aside id="left">
+
+  <!-- Live gauge -->
+  <div id="gwrap">
+    <div class="slbl">Live RL Reading</div>
+    <svg id="gsvg" viewBox="0 0 206 128">
+      <path d="M13 110 A86 86 0 0 1 193 110" fill="none" stroke="#1C2A38" stroke-width="11" stroke-linecap="round"/>
+      <path id="garc" d="M13 110 A86 86 0 0 1 193 110" fill="none" stroke="#F0A020" stroke-width="11" stroke-linecap="round" stroke-dasharray="0 270"/>
+      <circle id="gtdot" cx="103" cy="26" r="3" fill="#3888F0" opacity=".85"/>
+      <text x="103" y="107" text-anchor="middle" font-family="IBM Plex Mono" font-size="8" fill="#405060">mcd / lx·m²</text>
+      <text x="10" y="124" text-anchor="middle" font-family="IBM Plex Mono" font-size="7" fill="#405060">0</text>
+      <text id="gmaxlbl" x="196" y="124" text-anchor="middle" font-family="IBM Plex Mono" font-size="7" fill="#405060">500</text>
+    </svg>
+    <div id="gval">—</div>
+    <div id="gunit">mcd / lx · m²</div>
+    <div id="gcbadge" class="idle"><span id="gci">◉</span>&nbsp;<span id="gct">Awaiting Reading</span></div>
+    <div id="ggeom">Geometry: select asset type</div>
+  </div>
+
+  <!-- Measurement conditions -->
+  <div id="conds">
+    <div class="slbl">Measurement Conditions</div>
+    <div class="crow">
+      <span class="clbl">Surface</span>
+      <div class="cbtn act" id="c-dry" onclick="setCond('s','dry')">☀ Dry</div>
+      <div class="cbtn wet" id="c-wet" onclick="setCond('s','wet')">💧 Wet</div>
+    </div>
+    <div class="crow">
+      <span class="clbl">Time</span>
+      <div class="cbtn act" id="c-day" onclick="setCond('t','day')">🌤 Day</div>
+      <div class="cbtn ngt" id="c-ngt" onclick="setCond('t','ngt')">🌙 Night</div>
+    </div>
+    <div class="crow">
+      <span class="clbl">Lighting</span>
+      <div class="cbtn act" id="c-lit" onclick="setCond('l','lit')">💡 Lit</div>
+      <div class="cbtn unl" id="c-unl" onclick="setCond('l','unl')">🌑 Unlit</div>
+    </div>
+    <div class="crow">
+      <span class="clbl">Weather</span>
+      <div class="cbtn act" id="c-clr" onclick="setCond('w','clr')">✦ Clear</div>
+      <div class="cbtn fog" id="c-fog" onclick="setCond('w','fog')">🌫 Fog</div>
+      <div class="cbtn wet" id="c-rain" onclick="setCond('w','rain')">🌧 Rain</div>
+    </div>
+  </div>
+
+  <!-- Asset & threshold -->
+  <div class="sec">
+    <div class="slbl">Asset Type — IRC Standard</div>
+    <div class="fg">
+      <label>Asset / Sheeting Class</label>
+      <select id="asel" onchange="onAsset()">
+        <optgroup label="── Traffic Signs  IRC 67:2012  α=0.2° β=+5°">
+          <option value="s3">Sign Type III — Diamond Grade (DG)  ≥380</option>
+          <option value="s2" selected>Sign Type II — High Intensity (HIP)  ≥250</option>
+          <option value="s1">Sign Type I — Engineering Grade (EG)  ≥70</option>
+          <option value="gnt">Gantry / VMS Sign (DG)  ≥380</option>
+        </optgroup>
+        <optgroup label="── Pavement Markings  IRC 35:2015  α=1.24° β=2.29°">
+          <option value="mwn">Marking White — New  ≥100 dry / ≥35 wet</option>
+          <option value="mwi">Marking White — In-Service  ≥50 dry / ≥20 wet</option>
+          <option value="myn">Marking Yellow — New  ≥60 dry / ≥25 wet</option>
+          <option value="myi">Marking Yellow — In-Service  ≥30 dry / ≥15 wet</option>
+        </optgroup>
+        <optgroup label="── Road Furniture  IRC 35:2015">
+          <option value="rpm">Road Stud / RPM Cat-B  ≥300</option>
+          <option value="del">Delineator / PRRP  ≥150</option>
+        </optgroup>
+      </select>
+    </div>
+    <div class="fg">
+      <label>Highway / Chainage</label>
+      <input type="text" id="chain" placeholder="e.g. NH-44, KM 142+500">
+    </div>
+    <div id="thrbox">
+      <div class="thr-r"><span class="thr-k">Dry min (IRC):</span><span class="thr-v" id="tv-dry">250</span><span style="color:var(--tm);font-size:8.5px"> mcd/lx·m²</span></div>
+      <div class="thr-r"><span class="thr-k">Wet min (IRC):</span><span class="thr-v w" id="tv-wet">175</span><span style="color:var(--tm);font-size:8.5px"> mcd/lx·m²</span></div>
+      <div class="thr-r thr-div">
+        <span class="thr-k">Active now:</span>
+        <span class="thr-v" id="tv-act">250</span>
+        <span class="thr-std" id="tv-std">IRC 67 Type II</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- 2.2 m continuous scan -->
+  <div class="sec">
+    <div class="slbl">Continuous Scan — 2.2 m Interval</div>
+    <button id="scanbtn" onclick="toggleScan()">▶ Start 2.2 m Scan</button>
+    <div class="sgrid">
+      <div class="scard"><div class="scard-l">Distance</div><div class="scard-v a" id="sc-dist">0 m</div></div>
+      <div class="scard"><div class="scard-l">Speed</div><div class="scard-v" id="sc-spd">0 km/h</div></div>
+      <div class="scard"><div class="scard-l">Readings</div><div class="scard-v g" id="sc-cnt">0</div></div>
+      <div class="scard"><div class="scard-l">Rate</div><div class="scard-v" id="sc-rate">—/km</div></div>
+    </div>
+    <div class="trow">
+      <span class="tlbl">Simulation Mode</span>
+      <div class="tog" id="simtog" onclick="toggleSim()"></div>
+    </div>
+  </div>
+
+  <!-- Recent readings -->
+  <div class="sec" style="padding-bottom:4px"><div class="slbl">Recent Readings</div></div>
+  <div id="rlist"><div class="empty">No readings yet</div></div>
+</aside>
+
+<!-- ══ CENTER ══ -->
+<main id="ctr">
+  <div id="tabs">
+    <div class="tab act" onclick="goTab('map')">🗺 Map</div>
+    <div class="tab" onclick="goTab('chart')">📈 Chart</div>
+    <div class="tab" onclick="goTab('log')">📋 Log</div>
+    <div class="tsp"></div>
+    <div id="mapctrls">
+      <select id="mlsel" onchange="setLayer(this.value)">
+        <option value="sat" selected>Satellite + Roads</option>
+        <option value="str">Street Map</option>
+        <option value="dark">Dark</option>
+        <option value="osm">OpenStreetMap</option>
+      </select>
+      <button class="btn bg bsm" id="hmbtn" onclick="toggleHeat()">☀ Heatmap</button>
+      <button class="btn bg bsm" onclick="fitMap()">⊡ Fit</button>
+    </div>
+  </div>
+  <div class="tp act" id="tp-map"><div id="mapd"></div></div>
+  <div class="tp" id="tp-chart"><div id="chartwrap"><div id="chartin"><canvas id="cvs"></canvas></div></div></div>
+  <div class="tp" id="tp-log">
+    <div id="logwrap">
+      <table id="logtbl">
+        <thead><tr>
+          <th>#</th><th>m</th><th>RL (mcd/lx·m²)</th><th>Min</th><th>IRC</th>
+          <th>Asset</th><th>Channel</th><th>Cond.</th><th>Time</th><th>Lat</th><th>Lng</th><th>Chainage</th>
+        </tr></thead>
+        <tbody id="logbody"></tbody>
+      </table>
+    </div>
+  </div>
+</main>
+
+<!-- ══ RIGHT ══ -->
+<aside id="right">
+  <div class="sec">
+    <div class="slbl">Session Statistics</div>
+    <div class="sg2">
+      <div class="stat"><div class="stat-l">Total</div><div class="stat-v a" id="st-tot">0</div></div>
+      <div class="stat"><div class="stat-l">Average</div><div class="stat-v sm" id="st-avg">—</div></div>
+      <div class="stat"><div class="stat-l">Max</div><div class="stat-v g sm" id="st-max">—</div></div>
+      <div class="stat"><div class="stat-l">Min</div><div class="stat-v r sm" id="st-min">—</div></div>
+    </div>
+  </div>
+
+  <div class="sec">
+    <div class="slbl">IRC Compliance</div>
+    <div style="display:flex;flex-direction:column;align-items:center;padding:7px 0">
+      <svg id="donut-svg" viewBox="0 0 120 120">
+        <circle cx="60" cy="60" r="44" fill="none" stroke="#1C2A38" stroke-width="13"/>
+        <circle id="dp" cx="60" cy="60" r="44" fill="none" stroke="#14C864" stroke-width="13"
+          stroke-dasharray="277 277" stroke-dashoffset="277" transform="rotate(-90 60 60)"/>
+        <circle id="df" cx="60" cy="60" r="44" fill="none" stroke="#F04040" stroke-width="13"
+          stroke-dasharray="277 277" stroke-dashoffset="277" transform="rotate(-90 60 60)" opacity=".55"/>
+      </svg>
+      <div id="dpct">—</div>
+      <div id="dlbl">Pass Rate</div>
+      <div style="margin-top:7px;width:100%">
+        <div class="leg"><div class="leg-d" style="background:var(--green)"></div><span id="lp">Pass: 0</span></div>
+        <div class="leg"><div class="leg-d" style="background:var(--red)"></div><span id="lf">Fail: 0</span></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="sec">
+    <div class="slbl">Condition Breakdown</div>
+    <div id="cblist"><div style="color:var(--tm);font-size:10px;text-align:center;padding:5px">No data</div></div>
+  </div>
+
+  <div class="sec">
+    <div class="slbl">GPS Position</div>
+    <div id="gpsc">
+      <div class="gr"><span class="gk">LAT</span><span class="gv" id="g-lat">—</span></div>
+      <div class="gr"><span class="gk">LNG</span><span class="gv" id="g-lng">—</span></div>
+      <div class="gr"><span class="gk">ACC</span><span class="gv" id="g-acc">—</span></div>
+      <div class="gr"><span class="gk">ALT</span><span class="gv" id="g-alt">—</span></div>
+      <div class="gr"><span class="gk">SPD</span><span class="gv" id="g-spd">—</span></div>
+    </div>
+    <button class="btn bg bsm" style="width:100%;margin-top:6px;justify-content:center" onclick="startGPS()">⌖ Enable GPS</button>
+  </div>
+
+  <div id="expsec">
+    <div class="slbl" style="margin-bottom:7px">Export</div>
+    <button class="btn bp" onclick="expPDF()">↓ Export PDF Report</button>
+    <button class="btn bg" onclick="expCSV()">↓ Export CSV Data</button>
+  </div>
+</aside>
+</div><!-- #body -->
+</div><!-- #app -->
+
+<!-- ════ SETTINGS MODAL ════ -->
+<div class="mbg" id="m-settings">
+<div class="modal" style="width:530px">
+  <div class="mhd"><div class="mt">⚙ Settings</div><button class="mcl" onclick="closeM('m-settings')">✕</button></div>
+
+  <div class="msec">Bluetooth BLE — Reflectometer Connection</div>
+  <div class="fg"><label>Service UUID</label><input type="text" id="s-svc" placeholder="0000ffe0-0000-1000-8000-00805f9b34fb"></div>
+  <div class="fg"><label>Characteristic UUID</label><input type="text" id="s-chr" placeholder="0000ffe1-0000-1000-8000-00805f9b34fb"></div>
+  <div class="fg"><label>Data Format (firmware output)</label>
+    <select id="s-fmt">
+      <option value="utf8">UTF-8 String — "123.4"</option>
+      <option value="f32le">Float32 Little-Endian (4 bytes)</option>
+      <option value="u16le">UInt16 Little-Endian (2 bytes)</option>
+      <option value="i16le">Int16 Little-Endian (2 bytes)</option>
+    </select></div>
+
+  <div class="msec">IRC 67:2012 — Traffic Sign &amp; Gantry Thresholds · α=0.2° β=+5°</div>
+  <table class="irct">
+    <tr><th>Type</th><th>Sheeting</th><th>Dry min</th><th>Wet est.</th></tr>
+    <tr><td>Type III</td><td>Diamond Grade (DG)</td>
+        <td><input type="number" id="t-s3d" value="380"></td><td><input type="number" id="t-s3w" value="266"></td></tr>
+    <tr><td>Type II</td><td>High Intensity (HIP)</td>
+        <td><input type="number" id="t-s2d" value="250"></td><td><input type="number" id="t-s2w" value="175"></td></tr>
+    <tr><td>Type I</td><td>Engineering Grade (EG)</td>
+        <td><input type="number" id="t-s1d" value="70"></td><td><input type="number" id="t-s1w" value="49"></td></tr>
+    <tr><td>Gantry / VMS</td><td>Diamond Grade (DG)</td>
+        <td><input type="number" id="t-gntd" value="380"></td><td><input type="number" id="t-gntw" value="266"></td></tr>
+  </table>
+  <div class="note">IRC 67:2012 §6.3 · Wet threshold = 70% of dry (industry practice) · Gantry signs follow same Type III DG criteria</div>
+
+  <div class="msec">IRC 35:2015 — Pavement Marking, RPM &amp; Delineator Thresholds · α=1.24° β=2.29°</div>
+  <table class="irct">
+    <tr><th>Asset</th><th>Standard</th><th>Dry min</th><th>Wet min</th></tr>
+    <tr><td>White Marking — New</td><td>IRC 35:2015</td>
+        <td><input type="number" id="t-mwnd" value="100"></td><td><input type="number" id="t-mwnw" value="35"></td></tr>
+    <tr><td>White Marking — In-Service</td><td>IRC 35:2015</td>
+        <td><input type="number" id="t-mwid" value="50"></td><td><input type="number" id="t-mwiw" value="20"></td></tr>
+    <tr><td>Yellow Marking — New</td><td>IRC 35:2015</td>
+        <td><input type="number" id="t-mynd" value="60"></td><td><input type="number" id="t-mynw" value="25"></td></tr>
+    <tr><td>Yellow Marking — In-Service</td><td>IRC 35:2015</td>
+        <td><input type="number" id="t-myid" value="30"></td><td><input type="number" id="t-myiw" value="15"></td></tr>
+    <tr><td>Road Stud / RPM Cat-B</td><td>IRC 35:2015</td>
+        <td><input type="number" id="t-rpmd" value="300"></td><td><input type="number" id="t-rpmw" value="300"></td></tr>
+    <tr><td>Delineator / PRRP</td><td>IRC 35</td>
+        <td><input type="number" id="t-deld" value="150"></td><td><input type="number" id="t-delw" value="150"></td></tr>
+  </table>
+  <div class="note">IRC 35:2015 §8 · White new ≥100 dry / ≥35 wet · White M/S ≥50 dry / ≥20 wet · RPM Cat-B ≥300 both conditions · All values in mcd/lx·m²</div>
+
+  <div class="mft">
+    <button class="btn bg" onclick="closeM('m-settings')">Cancel</button>
+    <button class="btn bp" onclick="saveSettings()">Save Settings</button>
+  </div>
+</div>
+</div>
+
+<!-- ════ BLE MODAL ════ -->
+<div class="mbg" id="m-ble">
+<div class="modal modal-sm">
+  <div class="mhd"><div class="mt">📡 Connect Reflectometer</div><button class="mcl" onclick="closeM('m-ble')">✕</button></div>
+  <p style="color:var(--td);font-size:11px;line-height:1.7;margin-bottom:12px">
+    Power on your reflectometer in pairing mode.<br>
+    Each BLE notification = one full 2.2 m cross-section (may contain multiple channels).
+  </p>
+  <div class="fg"><label>Connection Mode</label>
+    <select id="bmode" onchange="onBMode()">
+      <option value="uuid">By Service UUID (recommended)</option>
+      <option value="any">Accept Any BLE Device</option>
+      <option value="name">By Device Name Prefix</option>
+    </select></div>
+  <div class="fg" id="bname-w" style="display:none"><label>Name Prefix</label>
+    <input type="text" id="bpfx" placeholder="e.g. RETRO-"></div>
+  <div style="background:var(--card);border:1px solid var(--b);border-radius:5px;padding:8px;margin-bottom:11px;font-family:var(--mono);font-size:9.5px;color:var(--tm);line-height:2">
+    Service UUID: <span id="b-svc" style="color:var(--amber)">—</span><br>
+    Char UUID: <span id="b-chr" style="color:var(--amber)">—</span>
+  </div>
+  <div class="mft">
+    <button class="btn bg" onclick="closeM('m-ble')">Cancel</button>
+    <button class="btn bp" onclick="doConnect()">📡 Scan &amp; Connect</button>
+  </div>
+</div>
+</div>
+
+<!-- ════ DEMO MODAL ════ -->
+<div class="mbg" id="m-demo">
+<div class="modal" style="width:430px">
+  <div class="mhd"><div class="mt">📁 Demo Data</div><button class="mcl" onclick="closeM('m-demo')">✕</button></div>
+  <p style="color:var(--td);font-size:11px;line-height:1.7;margin-bottom:14px">Load pre-recorded field data to explore RASTRA without hardware.</p>
+  <div style="background:var(--card);border:1px solid var(--purple);border-radius:var(--r);padding:13px;margin-bottom:10px">
+    <div style="font-family:var(--hd);font-size:11px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:#C0A0FF;margin-bottom:5px">🎬 Built-in — NH-44 Nagpur Survey</div>
+    <div style="font-size:11px;color:var(--td);line-height:1.7;margin-bottom:9px">
+      <b style="color:var(--t)">200 readings @ 2.2 m</b> · 440 m stretch · KM 840–841<br>
+      Signs · Markings · Studs · Delineators · 4 condition sets<br>
+      Full IRC 67 / IRC 35 compliance analysis · GPS track
+    </div>
+    <button class="btn bsm" onclick="loadBuiltin()" style="width:100%;background:var(--purple);color:#fff;font-family:var(--hd);font-weight:700;letter-spacing:.08em;justify-content:center;padding:8px">🚀 Load Demo Instantly</button>
+  </div>
+  <div style="display:flex;align-items:center;gap:9px;margin:11px 0">
+    <div style="flex:1;height:1px;background:var(--b)"></div>
+    <span style="font-size:9.5px;color:var(--tm);font-family:var(--hd);letter-spacing:.1em">OR UPLOAD CSV</span>
+    <div style="flex:1;height:1px;background:var(--b)"></div>
+  </div>
+  <div style="background:var(--card);border:1px solid var(--b);border-radius:var(--r);padding:13px">
+    <div style="font-family:var(--hd);font-size:11px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--amber);margin-bottom:5px">📂 Upload RASTRA CSV Export</div>
+    <input type="file" id="dcsv" accept=".csv" style="display:none" onchange="loadCSV(this)">
+    <button class="btn bg bsm" onclick="document.getElementById('dcsv').click()" style="width:100%;justify-content:center;padding:8px">📂 Select CSV File…</button>
+  </div>
+  <div class="mft"><button class="btn bg" onclick="closeM('m-demo')">Cancel</button></div>
+</div>
+</div>
+
+<div id="notif"></div>
+
+<script>
+// ================================================================
+//  RASTRA v3 — Road Analysis & Safety Tracking for Reflective Assessment
+//  NHAI Retroreflectivity Inspection System
+//  IRC 67:2012 · IRC 35:2015 · BLE · GPS · 2.2 m Scan
+// ================================================================
+
+// ── CONSTANTS ────────────────────────────────────────────────────
+const CIRC = 277;        // SVG arc circumference (π×r = π×88)
+const D_INT = 2.2;       // metres between readings
+
+// ── ASSET METADATA  (IRC 67:2012 & IRC 35:2015 only) ─────────────
+const A = {
+  s3: {label:'Sign Type III (DG)',   std:'IRC 67:2012 Type III',geom:'α=0.2° β=+5° (IRC 67:2012)',  type:'sign',   gmax:1200},
+  s2: {label:'Sign Type II (HIP)',   std:'IRC 67:2012 Type II', geom:'α=0.2° β=+5° (IRC 67:2012)',  type:'sign',   gmax:1000},
+  s1: {label:'Sign Type I (EG)',     std:'IRC 67:2012 Type I',  geom:'α=0.2° β=+5° (IRC 67:2012)',  type:'sign',   gmax:500 },
+  gnt:{label:'Gantry Sign (DG)',     std:'IRC 67:2012 Gantry',  geom:'α=0.2° β=+5° (IRC 67:2012)',  type:'gantry', gmax:1200},
+  mwn:{label:'Marking White (New)',  std:'IRC 35:2015 White New',geom:'α=1.24° β=2.29° (IRC 35:2015)',type:'mark', gmax:500 },
+  mwi:{label:'Marking White (M/S)', std:'IRC 35:2015 White M/S',geom:'α=1.24° β=2.29° (IRC 35:2015)',type:'mark', gmax:400 },
+  myn:{label:'Marking Yellow (New)',std:'IRC 35:2015 Yellow New',geom:'α=1.24° β=2.29° (IRC 35:2015)',type:'mark', gmax:300 },
+  myi:{label:'Marking Yel (M/S)',   std:'IRC 35:2015 Yellow M/S',geom:'α=1.24° β=2.29° (IRC 35:2015)',type:'mark', gmax:200},
+  rpm:{label:'Road Stud / RPM',     std:'IRC 35:2015 RPM Cat-B',geom:'IRC 35:2015 Cat-B geometry',   type:'stud',  gmax:1000},
+  del:{label:'Delineator / PRRP',   std:'IRC 35:2015 Delineator',geom:'IRC 35:2015 geometry',         type:'delin', gmax:600 },
+};
+
+// ── IRC THRESHOLDS — dry / wet mcd/lx·m² ─────────────────────────
+// IRC 67:2012 §6.3 (signs) · IRC 35:2015 §8 (markings/RPM/delineators)
+const DEF_THR = {
+  s3:{d:380,w:266}, s2:{d:250,w:175}, s1:{d:70,w:49}, gnt:{d:380,w:266},
+  mwn:{d:100,w:35}, mwi:{d:50,w:20},
+  myn:{d:60,w:25},  myi:{d:30,w:15},
+  rpm:{d:300,w:300},del:{d:150,w:150},
+};
+
+// ── CROSS-SECTION CHANNELS ───────────────────────────────────────
+// Defines every element the reflectometer sweeps across in one 2.2 m capture.
+// lateralM = metres perpendicular from GPS vehicle centreline
+// (negative = left/kerbside, positive = right/offside for LHD Indian roads)
+// prob = probability this channel fires on any given capture (1.0 = always)
+// Geometry assumes 2-lane NH: 2×3.5 m carriageway + 1.5 m shoulders each side
+//   GPS vehicle track ≈ nearside lane centre = +1.75 m from left edge
+const XSECT = [
+  {ch:'le',  asset:'mwi', lateralM:-1.75, label:'Left Edge Marking',  prob:1.00},
+  {ch:'cl',  asset:'mwn', lateralM:+1.75, label:'Centre Lane Marking', prob:1.00},
+  {ch:'re',  asset:'mwi', lateralM:+5.25, label:'Right Edge Marking',  prob:1.00},
+  {ch:'rpm', asset:'rpm', lateralM:+1.75, label:'Road Stud / RPM',      prob:0.10},
+  {ch:'ls',  asset:'s2',  lateralM:-5.50, label:'Left Road Sign',       prob:0.05},
+  {ch:'rs',  asset:'s2',  lateralM:+8.00, label:'Right Road Sign',      prob:0.05},
+  {ch:'gnt', asset:'gnt', lateralM: 0.00, label:'Gantry Sign',          prob:0.01},
+  {ch:'del', asset:'del', lateralM:+7.50, label:'Delineator / PRRP',    prob:0.06},
+];
+
+// ── STATE ────────────────────────────────────────────────────────
+const S = {
+  rds:[],sess:false,t0:null,tiRef:null,scan:false,dist:0,spd:0,
+  simOn:false,simRef:null,simIdx:0,
+  simPts:null,        // road geometry points used by simulator
+  ble:{dev:null,chr:null,ok:false},
+  gps:{watch:null,pos:null,first:true},
+  map:null,tiles:{},curTile:'sat',
+  satGrp:null,heat:null,mkLayer:null,rtLayer:null,
+  chart:null,
+  cond:{s:'dry',t:'day',l:'lit',w:'clr'},
+  cfg:{
+    svc:'0000ffe0-0000-1000-8000-00805f9b34fb',
+    chr:'0000ffe1-0000-1000-8000-00805f9b34fb',
+    fmt:'utf8',
+    thr:JSON.parse(JSON.stringify(DEF_THR))
+  },
+  demoOn:false,
+  lastMarks:{},       // per-channel {ch: {lat,lng}} for polyline continuity
+};
+
+// ── INIT ─────────────────────────────────────────────────────────
+window.addEventListener('DOMContentLoaded',()=>{
+  loadCfg(); initMap(); initChart(); onAsset();
+  notify('RASTRA ready — connect BLE reflectometer or enable Simulation Mode','info');
+});
+
+// ── THRESHOLD HELPERS ────────────────────────────────────────────
+function thr(asset,surface){
+  const t=S.cfg.thr[asset]||{d:100,w:50};
+  return surface==='wet'?t.w:t.d;
+}
+function thrNow(){return thr(id('asel').value,S.cond.s);}
+function condStr(c){
+  const p=[];
+  if(c.s==='wet')p.push('Wet');
+  if(c.t==='ngt')p.push('Night');
+  if(c.l==='unl')p.push('Unlit');
+  if(c.w!=='clr')p.push(c.w[0].toUpperCase()+c.w.slice(1));
+  return p.length?p.join('/'):'Dry/Day';
+}
+
+// ── CONDITIONS ───────────────────────────────────────────────────
+const CMAP={s:{dry:'c-dry',wet:'c-wet'},t:{day:'c-day',ngt:'c-ngt'},l:{lit:'c-lit',unl:'c-unl'},w:{clr:'c-clr',fog:'c-fog',rain:'c-rain'}};
+function setCond(dim,val){
+  S.cond[dim]=val;
+  Object.values(CMAP[dim]).forEach(i=>id(i)?.classList.remove('act'));
+  id(CMAP[dim][val])?.classList.add('act');
+  onAsset();
+}
+
+// ── ASSET CHANGE ─────────────────────────────────────────────────
+function onAsset(){
+  const k=id('asel').value;
+  const td=S.cfg.thr[k]?.d??100,tw=S.cfg.thr[k]?.w??50;
+  const active=thr(k,S.cond.s);
+  id('tv-dry').textContent=td; id('tv-wet').textContent=tw;
+  id('tv-act').textContent=active;
+  id('tv-std').textContent=A[k]?.std||'—';
+  id('ggeom').textContent='Geometry: '+(A[k]?.geom||'—');
+  if(S.chart?.data?.datasets[1]?.data?.length){
+    S.chart.data.datasets[1].data=S.chart.data.datasets[1].data.map(()=>active);
+    S.chart.update();
+  }
+}
+
+// ── MAP ──────────────────────────────────────────────────────────
+function initMap(){
+  S.map=L.map('mapd',{center:[20.59,78.96],zoom:5,zoomControl:true});
+  const SAT =L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',{attribution:'Esri © Maxar',maxZoom:20});
+  const ROAD=L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Transportation/MapServer/tile/{z}/{y}/{x}',{attribution:'Esri Roads',maxZoom:20,opacity:0.8});
+  const LBLS=L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}',{attribution:'Esri Labels',maxZoom:20,opacity:0.9});
+  const STR =L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}',{attribution:'Esri',maxZoom:20});
+  const DARK=L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',{attribution:'CartoDB',subdomains:'abcd',maxZoom:19});
+  const OSM =L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{attribution:'OSM',maxZoom:19});
+  S.satGrp=L.layerGroup([SAT,ROAD,LBLS]);
+  S.tiles={sat:S.satGrp,str:STR,dark:DARK,osm:OSM};
+  S.satGrp.addTo(S.map);
+  S.mkLayer=L.layerGroup().addTo(S.map);
+  S.rtLayer=L.layerGroup().addTo(S.map);
+}
+function setLayer(n){
+  if(S.tiles[S.curTile])S.tiles[S.curTile].remove();
+  S.curTile=n; S.tiles[n].addTo(S.map);
+}
+
+// ── BEARING & LATERAL OFFSET HELPERS ────────────────────────────
+// Compute compass bearing from point a→b (degrees)
+function bearing(a,b){
+  const d2r=Math.PI/180,la=a.lat*d2r,lb=b.lat*d2r,dl=(b.lng-a.lng)*d2r;
+  return((Math.atan2(Math.sin(dl)*Math.cos(lb),
+    Math.cos(la)*Math.sin(lb)-Math.sin(la)*Math.cos(lb)*Math.cos(dl))*180/Math.PI)+360)%360;
+}
+// Offset a {lat,lng} by lateralM metres perpendicular to bearingDeg
+// +ve lateralM = right of travel direction
+function lateralPt(lat,lng,lateralM,brng){
+  if(!lateralM)return{lat,lng};
+  const perpBrng=(brng+(lateralM>=0?90:-90)+360)%360;
+  const d=Math.abs(lateralM)/6371000,b=perpBrng*Math.PI/180;
+  const la1=lat*Math.PI/180,lo1=lng*Math.PI/180;
+  const la2=Math.asin(Math.sin(la1)*Math.cos(d)+Math.cos(la1)*Math.sin(d)*Math.cos(b));
+  const lo2=lo1+Math.atan2(Math.sin(b)*Math.sin(d)*Math.cos(la1),Math.cos(d)-Math.sin(la1)*Math.sin(la2));
+  return{lat:la2*180/Math.PI,lng:lo2*180/Math.PI};
+}
+
+// ── MAP RENDERING ────────────────────────────────────────────────
+// Each reading has: lat/lng (GPS centreline), brng, ch (channel key), lateralM
+// Markings → per-channel thin coloured polylines exactly on their lane/edge position
+// Signs    → triangle icon, offset to verge
+// Studs    → diamond icon, on lane line
+// Gantry   → rectangle "G" icon, overhead = road centre
+// Delin.   → circle, offset to verge
+function toMap(r){
+  if(!r.lat||!r.lng)return;
+  const col=r.pass?'#14C864':(r.val>=r.min*0.8?'#F07030':'#F04040');
+  const at=A[r.asset]?.type||'delin';
+  const brng=r.brng||0;
+  const lm=r.lateralM||0;
+  const ck=r.ch||at;
+  // Compute the lateral display position for this channel
+  const {lat:mLat,lng:mLng}=lateralPt(r.lat,r.lng,lm,brng);
+
+  if(at==='mark'){
+    const prev=S.lastMarks[ck];
+    if(prev){
+      L.polyline([[prev.lat,prev.lng],[mLat,mLng]],
+        {color:col,weight:4,opacity:0.92,lineCap:'round',lineJoin:'round'})
+       .bindPopup(popup(r)).addTo(S.rtLayer);
+    }
+    S.lastMarks[ck]={lat:mLat,lng:mLng};
+
+  }else if(at==='sign'){
+    S.lastMarks[ck]=null;
+    L.marker([mLat,mLng],{icon:L.divIcon({className:'',
+      html:`<div style="width:0;height:0;border-left:8px solid transparent;border-right:8px solid transparent;border-bottom:16px solid ${col};filter:drop-shadow(0 1px 3px rgba(0,0,0,.7))"></div>`,
+      iconSize:[16,16],iconAnchor:[8,16]
+    })}).bindPopup(popup(r)).addTo(S.mkLayer);
+
+  }else if(at==='stud'){
+    S.lastMarks[ck]=null;
+    L.marker([mLat,mLng],{icon:L.divIcon({className:'',
+      html:`<div style="width:10px;height:10px;background:${col};border:2px solid rgba(255,255,255,.8);transform:rotate(45deg);box-shadow:0 0 3px rgba(0,0,0,.5)"></div>`,
+      iconSize:[12,12],iconAnchor:[6,6]
+    })}).bindPopup(popup(r)).addTo(S.mkLayer);
+
+  }else if(at==='gantry'){
+    S.lastMarks[ck]=null;
+    L.marker([mLat,mLng],{icon:L.divIcon({className:'',
+      html:`<div style="width:20px;height:11px;background:${col};border:2px solid rgba(255,255,255,.8);border-radius:2px;display:flex;align-items:center;justify-content:center;box-shadow:0 0 4px rgba(0,0,0,.55)"><span style="color:#07090D;font-size:7px;font-weight:900;font-family:monospace">G</span></div>`,
+      iconSize:[22,13],iconAnchor:[11,6]
+    })}).bindPopup(popup(r)).addTo(S.mkLayer);
+
+  }else{
+    S.lastMarks[ck]=null;
+    L.circleMarker([mLat,mLng],{radius:5,fillColor:col,color:'rgba(255,255,255,.7)',weight:1.5,fillOpacity:0.9})
+     .bindPopup(popup(r)).addTo(S.mkLayer);
+  }
+}
+
+function popup(r){
+  const col=r.pass?'#14C864':'#F04040';
+  return `<div style="font-family:'IBM Plex Mono',monospace;font-size:10px;line-height:1.9;min-width:190px">
+    <div style="font-size:13px;font-weight:600;color:${col};margin-bottom:2px">${r.val.toFixed(1)} mcd/lx·m²</div>
+    <div style="color:#7A94A8">${A[r.asset]?.label}</div>
+    <div style="color:#3888F0;font-size:9px">${r.chLabel||r.ch||''}</div>
+    <div style="color:#7A94A8">@${r.dist.toFixed(1)} m · ${condStr(r.cond||{})}</div>
+    ${r.chain?`<div style="color:#7A94A8">${r.chain}</div>`:''}
+    <div style="margin-top:4px;padding:2px 7px;border-radius:3px;display:inline-block;
+      background:${r.pass?'rgba(20,200,100,.14)':'rgba(240,64,64,.14)'};color:${col};
+      font-weight:700;font-size:9px;letter-spacing:.1em">
+      ${r.pass?'✓ PASS':'✗ FAIL'} (min ${r.min})</div></div>`;
+}
+
+function toggleHeat(){
+  if(S.heat){S.map.removeLayer(S.heat);S.heat=null;id('hmbtn').textContent='☀ Heatmap';return;}
+  const pts=S.rds.filter(r=>r.lat&&r.lng).map(r=>[r.lat,r.lng,Math.min(r.val/400,1)]);
+  if(pts.length<3){notify('Need ≥3 GPS readings for heatmap','err');return;}
+  if(typeof L.heatLayer==='undefined'){notify('Heatmap plugin unavailable','err');return;}
+  S.heat=L.heatLayer(pts,{radius:24,blur:18,gradient:{'0':'#F04040','0.5':'#F0A020','1':'#14C864'}}).addTo(S.map);
+  id('hmbtn').textContent='✕ Heatmap';
+}
+function fitMap(){
+  const pts=S.rds.filter(r=>r.lat&&r.lng);
+  if(!pts.length)return;
+  S.map.fitBounds(L.latLngBounds(pts.map(r=>[r.lat,r.lng])),{padding:[36,36],maxZoom:19});
+}
+
+// ── CHART ────────────────────────────────────────────────────────
+function initChart(){
+  const ctx=id('cvs').getContext('2d');
+  S.chart=new Chart(ctx,{type:'line',data:{labels:[],datasets:[
+    {label:'RL (mcd/lx·m²)',data:[],borderColor:'#F0A020',backgroundColor:'rgba(240,160,32,.05)',
+     borderWidth:2,pointRadius:2.5,pointBackgroundColor:[],pointBorderColor:'#07090D',
+     pointBorderWidth:1.5,tension:.3,fill:true},
+    {label:'IRC Threshold',data:[],borderColor:'#3888F0',borderWidth:1.5,
+     borderDash:[5,5],pointRadius:0,fill:false}
+  ]},options:{
+    responsive:true,maintainAspectRatio:false,animation:{duration:100},
+    plugins:{
+      legend:{labels:{color:'#7A94A8',font:{family:'IBM Plex Mono',size:10}}},
+      tooltip:{backgroundColor:'#111820',borderColor:'#263848',borderWidth:1,
+        titleColor:'#D8E8F8',bodyColor:'#7A94A8',
+        titleFont:{family:'IBM Plex Mono',size:10},bodyFont:{family:'IBM Plex Mono',size:10},
+        callbacks:{title:i=>`${i[0].label} m`,
+          label:c=>{const r=S.rds[c.dataIndex];const ch=r?.chLabel?` [${r.chLabel}]`:'';return ` ${c.parsed.y.toFixed(1)} mcd/lx·m²${ch}`;}}}
+    },
+    scales:{
+      x:{title:{display:true,text:'Distance (m)',color:'#405060',font:{family:'IBM Plex Mono',size:9}},
+         grid:{color:'rgba(28,42,56,.9)'},ticks:{color:'#405060',font:{family:'IBM Plex Mono',size:9},maxTicksLimit:14}},
+      y:{min:0,title:{display:true,text:'RL (mcd/lx·m²)',color:'#405060',font:{family:'IBM Plex Mono',size:9}},
+         grid:{color:'rgba(28,42,56,.9)'},ticks:{color:'#405060',font:{family:'IBM Plex Mono',size:9}}}
+    }
+  }});
+}
+function updChart(r){
+  const d=S.chart.data;
+  d.labels.push(r.dist.toFixed(1));
+  d.datasets[0].data.push(r.val);
+  d.datasets[1].data.push(r.min);
+  const cols=d.datasets[0].data.map((v,i)=>v>=d.datasets[1].data[i]?'#14C864':'#F04040');
+  d.datasets[0].pointBackgroundColor=cols;
+  if(d.labels.length>600){d.labels.shift();d.datasets[0].data.shift();d.datasets[1].data.shift();}
+  S.chart.update();
+}
+
+// ── GAUGE ────────────────────────────────────────────────────────
+const CARC=270;
+function updGauge(val,min,gmax){
+  const pct=Math.min(val/gmax,1),pass=val>=min;
+  id('garc').setAttribute('stroke-dasharray',`${pct*CARC} ${CARC}`);
+  id('garc').setAttribute('stroke',pass?'#14C864':'#F04040');
+  const q=Math.min(min/gmax,1),ang=Math.PI*(1-q);
+  id('gtdot').setAttribute('cx',103+86*Math.cos(ang));
+  id('gtdot').setAttribute('cy',110-86*Math.sin(ang));
+  id('gmaxlbl').textContent=gmax;
+  const gv=id('gval'); gv.textContent=val.toFixed(1); gv.className=pass?'pass':'fail';
+  const cb=id('gcbadge'); cb.className=pass?'pass':'fail';
+  id('gct').textContent=pass?'COMPLIANT':'NON-COMPLIANT';
+  id('gci').textContent=pass?'✓':'✗';
+}
+function resetGauge(){
+  id('garc').setAttribute('stroke-dasharray',`0 ${CARC}`);
+  id('garc').setAttribute('stroke','#F0A020');
+  id('gval').textContent='—'; id('gval').className='';
+  id('gcbadge').className='idle'; id('gct').textContent='Awaiting Reading'; id('gci').textContent='◉';
+}
+
+// ── MULTI-CHANNEL CAPTURE ─────────────────────────────────────────
+// The reflectometer fires multiple channel readings at each 2.2 m trigger.
+// captureMulti() accepts the full array of readings from one capture event.
+function captureMulti(readings, brng){
+  if(!readings.length)return;
+  const now=new Date().toLocaleString('en-IN',{hour12:false});
+  const chain=id('chain').value.trim();
+  readings.forEach(r=>{
+    r.id=S.rds.length+1;
+    if(!r.time)r.time=now;
+    if(r.chain===undefined)r.chain=chain;
+    if(r.brng===undefined)r.brng=brng||0;
+    S.rds.push(r);
+    addToList(r); addToLog(r); updChart(r); toMap(r);
+  });
+  updStats(); updDonut(); updCB(); updScan();
+  // Update gauge with primary (first marking) channel value
+  const pri=readings.find(r=>A[r.asset]?.type==='mark')||readings[0];
+  if(pri){
+    updGauge(pri.val,pri.min,A[pri.asset]?.gmax||500);
+    const btn=id('scanbtn');
+    btn.style.outline=`2px solid ${pri.pass?'#14C864':'#F04040'}`;
+    setTimeout(()=>btn.style.outline='',220);
+  }
+}
+
+// Build a set of cross-section channel readings for one capture point
+function genChannelReadings(lat,lng,dist,cond,simIdx){
+  const readings=[];
+  XSECT.forEach(x=>{
+    if(x.prob<1&&Math.random()>=x.prob)return;
+    let asset=x.asset;
+    // Vary marking age realistically along route
+    if(x.ch==='le'||x.ch==='re')  asset=(simIdx<80)?'mwn':'mwi';
+    if(x.ch==='cl')                asset=(simIdx<60)?'mwn':'mwi';
+    if(x.ch==='ls'||x.ch==='rs'){
+      const rn=Math.random();
+      asset=rn<0.2?'s3':rn<0.7?'s2':'s1';
+    }
+    const mn=thr(asset,cond.s);
+    const factor=simIdx<50?1.45:simIdx<100?1.1:simIdx<150?0.85:0.66;
+    let val=Math.max(4,mn*factor+(Math.random()-.2)*mn*0.28);
+    if(cond.s==='wet')val*=0.48;
+    if(cond.w==='fog')val*=0.72;
+    readings.push({
+      asset,val,min:mn,pass:val>=mn,dist,
+      cond:{...cond},
+      lat,lng,lateralM:x.lateralM,
+      ch:x.ch,chLabel:x.label,
+      acc:2.0,alt:308
+    });
+  });
+  return readings;
+}
+
+// Legacy single-value capture (BLE float / manual)
+function captureSingle(val){
+  const k=id('asel').value;
+  const mn=thrNow();
+  const pos=S.gps.pos?.coords;
+  const xch=XSECT.find(x=>x.asset===k)||{ch:k,chLabel:A[k]?.label||k,lateralM:0};
+  captureMulti([{
+    asset:k,val,min:mn,pass:val>=mn,dist:S.dist,
+    cond:{...S.cond},
+    lat:pos?.latitude||null,lng:pos?.longitude||null,
+    acc:pos?.accuracy||null,alt:pos?.altitude||null,
+    ch:xch.ch,chLabel:xch.chLabel,lateralM:xch.lateralM,
+  }]);
+}
+
+function addToList(r){
+  const el=id('rlist');const em=el.querySelector('.empty');if(em)em.remove();
+  const d=document.createElement('div'); d.className='ri';
+  d.innerHTML=`<div class="ri-n">${r.id}</div>
+    <div class="ri-v ${r.pass?'pass':'fail'}">${r.val.toFixed(1)}</div>
+    <div class="ri-d">${r.dist.toFixed(0)}m</div>
+    <div class="ri-c">${r.ch||r.cond.s}</div>
+    <div class="ri-dot ${r.pass?'pass':'fail'}"></div>`;
+  d.onclick=()=>{if(r.lat&&r.lng){goTab('map');S.map.setView([r.lat,r.lng],18);}};
+  el.insertBefore(d,el.firstChild);
+  const items=el.querySelectorAll('.ri');
+  if(items.length>40)items[items.length-1].remove();
+}
+
+function addToLog(r){
+  const tr=document.createElement('tr');
+  tr.innerHTML=`<td>${r.id}</td><td>${r.dist.toFixed(1)}</td>
+    <td class="${r.pass?'pass-c':'fail-c'}">${r.val.toFixed(2)}</td>
+    <td>${r.min}</td><td class="${r.pass?'pass-c':'fail-c'}">${r.pass?'✓ PASS':'✗ FAIL'}</td>
+    <td>${A[r.asset]?.label||r.asset}</td>
+    <td style="color:#3888F0;font-size:9px">${r.chLabel||r.ch||'—'}</td>
+    <td class="${r.cond.s==='wet'?'wet-c':''}">${condStr(r.cond)}</td>
+    <td>${r.time?.split(',')[1]?.trim()||r.time||'—'}</td>
+    <td>${r.lat?.toFixed(6)||'—'}</td><td>${r.lng?.toFixed(6)||'—'}</td>
+    <td>${r.chain||'—'}</td>`;
+  id('logbody').insertBefore(tr,id('logbody').firstChild);
+}
+
+function updStats(){
+  const vs=S.rds.map(r=>r.val);if(!vs.length)return;
+  const avg=vs.reduce((a,b)=>a+b,0)/vs.length;
+  id('st-tot').textContent=vs.length;
+  id('st-avg').textContent=avg.toFixed(1);
+  id('st-max').textContent=Math.max(...vs).toFixed(1);
+  id('st-min').textContent=Math.min(...vs).toFixed(1);
+}
+function updDonut(){
+  const pass=S.rds.filter(r=>r.pass).length,fail=S.rds.length-pass;
+  if(!pass&&!fail)return;
+  const total=pass+fail,pct=(pass/total)*100;
+  const pd=(pass/total)*277,fd=(fail/total)*277;
+  id('dp').setAttribute('stroke-dasharray',`${pd} 277`);id('dp').setAttribute('stroke-dashoffset','0');
+  id('df').setAttribute('stroke-dasharray',`${fd} 277`);id('df').setAttribute('stroke-dashoffset',`${-pd}`);
+  const pe=id('dpct');pe.textContent=`${pct.toFixed(0)}%`;
+  pe.style.color=pct>=80?'#14C864':pct>=50?'#F0A020':'#F04040';
+  id('lp').textContent=`Pass: ${pass}`;id('lf').textContent=`Fail: ${fail}`;
+}
+function updCB(){
+  const dr=S.rds.filter(r=>r.cond?.s==='dry');
+  const wr=S.rds.filter(r=>r.cond?.s==='wet');
+  const nr=S.rds.filter(r=>r.cond?.t==='ngt');
+  const fr=S.rds.filter(r=>r.cond?.w==='fog'||r.cond?.w==='rain');
+  const pct=a=>a.length?`${(a.filter(r=>r.pass).length/a.length*100).toFixed(0)}% pass`:'—';
+  id('cblist').innerHTML=`
+    <div class="cb-row"><span class="cb-k">☀ Dry (${dr.length})</span><span class="cb-v">${pct(dr)}</span></div>
+    <div class="cb-row"><span class="cb-k">💧 Wet (${wr.length})</span><span class="cb-v" style="color:var(--blue)">${pct(wr)}</span></div>
+    <div class="cb-row"><span class="cb-k">🌙 Night (${nr.length})</span><span class="cb-v" style="color:#B0A0F0">${pct(nr)}</span></div>
+    <div class="cb-row"><span class="cb-k">🌫 Fog/Rain (${fr.length})</span><span class="cb-v" style="color:#90C0D0">${pct(fr)}</span></div>`;
+}
+function updScan(){
+  const d=S.dist;
+  id('sc-dist').textContent=d>=1000?`${(d/1000).toFixed(2)} km`:`${d.toFixed(0)} m`;
+  id('sc-cnt').textContent=S.rds.length;
+  id('sc-spd').textContent=S.spd.toFixed(0)+' km/h';
+  id('sc-rate').textContent=d>0?`${(S.rds.length/(d/1000)).toFixed(0)}/km`:'—/km';
+}
+
+// ── SESSION ──────────────────────────────────────────────────────
+function toggleSession(){S.sess?stopSess():startSess();}
+function startSess(){
+  S.sess=true;S.t0=Date.now();
+  const b=id('sbtn');b.textContent='■ Stop';b.style.background='#F04040';
+  S.tiRef=setInterval(()=>{
+    const e=Date.now()-S.t0,s=Math.floor(e/1000)%60,m=Math.floor(e/60000)%60,h=Math.floor(e/3600000);
+    id('stimer').textContent=h?`${h}:${p2(m)}:${p2(s)}`:`${p2(m)}:${p2(s)}`;
+  },1000);
+  if(S.simOn&&S.simPts)startSim();
+  notify('Session started','ok');
+}
+function stopSess(){
+  S.sess=false;clearInterval(S.tiRef);
+  if(S.scan)toggleScan();stopSim();
+  const b=id('sbtn');b.textContent='▶ Start';b.style.background='';
+  notify(`Session ended — ${S.rds.length} readings · ${S.dist.toFixed(0)} m`,'info');
+}
+function clearAll(){
+  if(S.sess)stopSess();
+  S.rds=[];S.dist=0;S.lastMarks={};
+  S.chart.data.labels=[];S.chart.data.datasets[0].data=[];
+  S.chart.data.datasets[1].data=[];S.chart.update();
+  S.mkLayer.clearLayers();S.rtLayer.clearLayers();
+  if(S.heat){S.map.removeLayer(S.heat);S.heat=null;}
+  id('logbody').innerHTML='';id('rlist').innerHTML='<div class="empty">No readings yet</div>';
+  id('stimer').textContent='00:00';id('st-tot').textContent='0';
+  ['st-avg','st-max','st-min'].forEach(i=>id(i).textContent='—');
+  id('dpct').textContent='—';id('lp').textContent='Pass: 0';id('lf').textContent='Fail: 0';
+  id('dp').setAttribute('stroke-dashoffset','277');id('df').setAttribute('stroke-dashoffset','277');
+  id('cblist').innerHTML='<div style="color:var(--tm);font-size:10px;text-align:center;padding:5px">No data</div>';
+  id('tdemo').classList.remove('show');S.demoOn=false;
+  updScan();resetGauge();
+  notify('Cleared','info');
+}
+function p2(n){return n.toString().padStart(2,'0')}
+
+// ── 2.2 m SCAN ───────────────────────────────────────────────────
+function toggleScan(){
+  S.scan=!S.scan;
+  const b=id('scanbtn');
+  if(S.scan){
+    if(!S.sess)startSess();
+    b.textContent='■ Stop 2.2 m Scan';b.classList.add('scanning');
+    notify('Continuous 2.2 m multi-channel scan active','ok');
+  }else{
+    b.textContent='▶ Start 2.2 m Scan';b.classList.remove('scanning');
+    notify('Scan stopped','info');
+  }
+}
+
+// ── SIMULATION — follows real OSM road geometry ───────────────────
+// Simulation pre-fetches the same OSM road as Demo so markers stay on the road.
+// Each tick advances 2.2 m along interpolated road points, computes the local
+// bearing, then generates a full cross-section (multi-channel) capture.
+function startSim(){
+  if(!S.simOn||S.simRef||!S.simPts||S.simPts.length<2)return;
+  S.simIdx=0;
+  S.simRef=setInterval(()=>{
+    if(!S.sess)return;
+    if(S.simIdx>=S.simPts.length-1){
+      stopSim();notify('SIM — end of road segment','info');return;
+    }
+    const pt=S.simPts[S.simIdx];
+    const nxt=S.simPts[Math.min(S.simIdx+1,S.simPts.length-1)];
+    const brng=bearing(pt,nxt);
+    S.gps.pos={coords:{latitude:pt.lat,longitude:pt.lng,accuracy:2.0,altitude:308}};
+    updGPS(S.gps.pos);
+    id('gdot').className='dot on';id('gtxt').textContent='GPS: SIM';
+    S.dist=S.simIdx*D_INT;S.spd=55+Math.random()*8;
+    S.simIdx++;
+    if(S.scan){
+      const caps=genChannelReadings(pt.lat,pt.lng,S.dist,S.cond,S.simIdx);
+      caps.forEach(r=>r.brng=brng);
+      captureMulti(caps,brng);
+      if(S.simIdx%8===0)S.map.setView([pt.lat,pt.lng],Math.max(S.map.getZoom(),17));
+    }
+  },700);
+}
+function stopSim(){if(S.simRef){clearInterval(S.simRef);S.simRef=null;}}
+function toggleSim(){
+  S.simOn=!S.simOn;
+  id('simtog').classList.toggle('on',S.simOn);
+  id('tsim').classList.toggle('show',S.simOn);
+  if(!S.simOn){stopSim();return;}
+  // Pre-fetch road geometry so sim markers follow the actual road
+  notify('Fetching road geometry for SIM…','info');
+  fetchOSMRoad()
+    .then(nodes=>{
+      S.simPts=interp(nodes,D_INT,800);
+      notify(`SIM ready — ${S.simPts.length} pts on NH-44`,'ok');
+      if(S.sess&&!S.simRef)startSim();
+    })
+    .catch(()=>{
+      S.simPts=interp(FB_NODES,D_INT,800);
+      notify('SIM using fallback road geometry','info');
+      if(S.sess&&!S.simRef)startSim();
+    });
+}
+
+// ── GPS ──────────────────────────────────────────────────────────
+function startGPS(){
+  if(!navigator.geolocation){notify('Geolocation unavailable','err');return;}
+  id('gdot').className='dot warn';id('gtxt').textContent='Locating…';
+  if(S.gps.watch)navigator.geolocation.clearWatch(S.gps.watch);
+  let lastPos=null,lastTime=null;
+  S.gps.watch=navigator.geolocation.watchPosition(
+    pos=>{
+      const first=!S.gps.pos;S.gps.pos=pos;updGPS(pos);
+      id('gdot').className='dot on';id('gtxt').textContent='GPS: Live';
+      if(first)S.map.setView([pos.coords.latitude,pos.coords.longitude],18);
+      if(lastPos&&lastTime){
+        const dt=(pos.timestamp-lastTime)/1000;
+        const dp=hav({lat:lastPos.coords.latitude,lng:lastPos.coords.longitude},
+                     {lat:pos.coords.latitude,lng:pos.coords.longitude});
+        if(dt>0)S.spd=(dp/dt)*3.6;
+      }
+      lastPos=pos;lastTime=pos.timestamp;
+    },
+    e=>{id('gdot').className='dot err';id('gtxt').textContent='GPS Err';notify('GPS: '+e.message,'err');},
+    {enableHighAccuracy:true,maximumAge:2000,timeout:15000}
+  );
+}
+function hav(a,b){
+  const R=6371000,d2r=Math.PI/180,dL=(b.lat-a.lat)*d2r,dG=(b.lng-a.lng)*d2r;
+  const x=Math.sin(dL/2)**2+Math.cos(a.lat*d2r)*Math.cos(b.lat*d2r)*Math.sin(dG/2)**2;
+  return R*2*Math.atan2(Math.sqrt(x),Math.sqrt(1-x));
+}
+function updGPS(pos){
+  id('g-lat').textContent=pos.coords.latitude.toFixed(6)+'°';
+  id('g-lng').textContent=pos.coords.longitude.toFixed(6)+'°';
+  id('g-acc').textContent=pos.coords.accuracy?pos.coords.accuracy.toFixed(1)+' m':'—';
+  id('g-alt').textContent=pos.coords.altitude?pos.coords.altitude.toFixed(1)+' m':'—';
+  id('g-spd').textContent=S.spd>0?S.spd.toFixed(1)+' km/h':'—';
+}
+
+// ── BLE ──────────────────────────────────────────────────────────
+function openBLE(){
+  id('b-svc').textContent=S.cfg.svc||'—';
+  id('b-chr').textContent=S.cfg.chr||'—';
+  openM('m-ble');
+}
+function onBMode(){
+  id('bname-w').style.display=id('bmode').value==='name'?'block':'none';
+}
+async function doConnect(){
+  if(!navigator.bluetooth){notify('Web Bluetooth requires Chrome desktop','err');closeM('m-ble');return;}
+  setBLE('warn','Scanning…');closeM('m-ble');
+  try{
+    const mode=id('bmode').value;let opts={};
+    if(mode==='uuid')opts={filters:[{services:[S.cfg.svc]}]};
+    else if(mode==='name')opts={filters:[{namePrefix:id('bpfx').value.trim()}],optionalServices:[S.cfg.svc]};
+    else opts={acceptAllDevices:true,optionalServices:[S.cfg.svc]};
+    const dev=await navigator.bluetooth.requestDevice(opts);
+    setBLE('warn','Connecting…');
+    const srv=await dev.gatt.connect();
+    const svc=await srv.getPrimaryService(S.cfg.svc);
+    const chr=await svc.getCharacteristic(S.cfg.chr);
+    await chr.startNotifications();
+    chr.addEventListener('characteristicvaluechanged',onBLEData);
+    S.ble={dev,chr,ok:true};
+    dev.addEventListener('gattserverdisconnected',()=>{S.ble.ok=false;setBLE('err','Disconnected');notify('BLE disconnected','err');});
+    setBLE('on',dev.name||'Connected');
+    notify('BLE connected: '+(dev.name||'Device'),'ok');
+  }catch(e){setBLE('err','Failed');notify('BLE: '+e.message,'err');}
+}
+
+// BLE data handler — supports multiple formats:
+//   JSON multi-channel: {"le":142.3,"cl":95.1,"re":88.4,"rpm":312,"ls":180}
+//   CSV multi-channel:  "le:142.3,cl:95.1,re:88.4"
+//   Single float:       "123.4" / Float32LE / UInt16LE / Int16LE
+function onBLEData(ev){
+  if(!S.scan)return;
+  const v=ev.target.value;
+  try{
+    // Binary → single reading
+    if(S.cfg.fmt!=='utf8'){
+      let val=S.cfg.fmt==='f32le'?v.getFloat32(0,true):S.cfg.fmt==='u16le'?v.getUint16(0,true):v.getInt16(0,true);
+      if(!isNaN(val)&&val>=0){S.dist+=D_INT;captureSingle(val);}
+      return;
+    }
+    const str=new TextDecoder().decode(v).trim();
+    const pos=S.gps.pos?.coords;
+    const lat=pos?.latitude||null,lng=pos?.longitude||null;
+    const acc=pos?.accuracy||null,alt=pos?.altitude||null;
+    const dist=S.dist+D_INT;
+
+    // ── JSON multi-channel
+    if(str.startsWith('{')){
+      try{
+        const obj=JSON.parse(str);
+        const readings=[];
+        Object.entries(obj).forEach(([key,rawVal])=>{
+          const val=parseFloat(rawVal); if(isNaN(val)||val<0)return;
+          const xch=XSECT.find(x=>x.ch===key)||XSECT.find(x=>x.asset===key);
+          const asset=xch?xch.asset:(A[key]?key:null); if(!asset)return;
+          readings.push({asset,val,min:thr(asset,S.cond.s),pass:val>=thr(asset,S.cond.s),
+            dist,cond:{...S.cond},lat,lng,acc,alt,
+            ch:xch?.ch||key,chLabel:xch?.label||A[asset]?.label||key,lateralM:xch?.lateralM||0});
+        });
+        if(readings.length){S.dist=dist;captureMulti(readings);}
+        return;
+      }catch(e){}
+    }
+
+    // ── CSV multi-channel: "ch:val,ch:val,..."
+    if(str.includes(':')&&str.includes(',')){
+      const readings=[];
+      str.split(',').forEach(pair=>{
+        const[key,vs]=pair.trim().split(':');
+        const val=parseFloat(vs); if(isNaN(val)||val<0||!key)return;
+        const xch=XSECT.find(x=>x.ch===key)||XSECT.find(x=>x.asset===key);
+        const asset=xch?xch.asset:(A[key]?key:null); if(!asset)return;
+        readings.push({asset,val,min:thr(asset,S.cond.s),pass:val>=thr(asset,S.cond.s),
+          dist,cond:{...S.cond},lat,lng,acc,alt,
+          ch:xch?.ch||key,chLabel:xch?.label||A[asset]?.label||key,lateralM:xch?.lateralM||0});
+      });
+      if(readings.length){S.dist=dist;captureMulti(readings);}
+      return;
+    }
+
+    // ── Legacy single float
+    const val=parseFloat(str);
+    if(!isNaN(val)&&val>=0){S.dist+=D_INT;captureSingle(val);}
+  }catch(e){console.error('BLE parse',e);}
+}
+function setBLE(st,txt){id('bdot').className='dot '+st;id('btxt').textContent=txt;}
+
+// ── TABS ─────────────────────────────────────────────────────────
+function goTab(t){
+  document.querySelectorAll('.tab').forEach((el,i)=>el.classList.toggle('act',['map','chart','log'][i]===t));
+  document.querySelectorAll('.tp').forEach(el=>el.classList.remove('act'));
+  id('tp-'+t).classList.add('act');
+  id('mapctrls').style.display=t==='map'?'flex':'none';
+  if(t==='map')setTimeout(()=>S.map.invalidateSize(),80);
+  if(t==='chart')S.chart.resize();
+}
+
+// ── SETTINGS ─────────────────────────────────────────────────────
+function openSettings(){
+  id('s-svc').value=S.cfg.svc;id('s-chr').value=S.cfg.chr;id('s-fmt').value=S.cfg.fmt;
+  const t=S.cfg.thr;
+  const fl=[['t-s3d','s3','d'],['t-s3w','s3','w'],['t-s2d','s2','d'],['t-s2w','s2','w'],
+            ['t-s1d','s1','d'],['t-s1w','s1','w'],['t-gntd','gnt','d'],['t-gntw','gnt','w'],
+            ['t-mwnd','mwn','d'],['t-mwnw','mwn','w'],['t-mwid','mwi','d'],['t-mwiw','mwi','w'],
+            ['t-mynd','myn','d'],['t-mynw','myn','w'],['t-myid','myi','d'],['t-myiw','myi','w'],
+            ['t-rpmd','rpm','d'],['t-rpmw','rpm','w'],['t-deld','del','d'],['t-delw','del','w']];
+  fl.forEach(([elId,k,dk])=>{const el=id(elId);if(el)el.value=t[k]?.[dk]??0;});
+  openM('m-settings');
+}
+function saveSettings(){
+  S.cfg.svc=id('s-svc').value.trim();
+  S.cfg.chr=id('s-chr').value.trim();
+  S.cfg.fmt=id('s-fmt').value;
+  const g=i=>+(id(i)?.value||0);
+  S.cfg.thr={
+    s3:{d:g('t-s3d'),w:g('t-s3w')},s2:{d:g('t-s2d'),w:g('t-s2w')},s1:{d:g('t-s1d'),w:g('t-s1w')},
+    gnt:{d:g('t-gntd'),w:g('t-gntw')},
+    mwn:{d:g('t-mwnd'),w:g('t-mwnw')},mwi:{d:g('t-mwid'),w:g('t-mwiw')},
+    myn:{d:g('t-mynd'),w:g('t-mynw')},myi:{d:g('t-myid'),w:g('t-myiw')},
+    rpm:{d:g('t-rpmd'),w:g('t-rpmw')},del:{d:g('t-deld'),w:g('t-delw')}
+  };
+  try{localStorage.setItem('rastra4',JSON.stringify(S.cfg));}catch(e){}
+  onAsset();closeM('m-settings');notify('Settings saved','ok');
+}
+function loadCfg(){
+  try{const s=localStorage.getItem('rastra4')||localStorage.getItem('rastra3');if(s)Object.assign(S.cfg,JSON.parse(s));}catch(e){}
+}
+
+// ── MODALS ───────────────────────────────────────────────────────
+function openM(i){id(i).classList.add('open');}
+function closeM(i){id(i).classList.remove('open');}
+document.querySelectorAll?.call(document,'.mbg')?.forEach?.(b=>b.addEventListener('click',e=>{if(e.target===b)b.classList.remove('open');}));
+window.addEventListener('DOMContentLoaded',()=>{
+  document.querySelectorAll('.mbg').forEach(b=>b.addEventListener('click',e=>{if(e.target===b)b.classList.remove('open');}));
+});
+function openDemoModal(){openM('m-demo');}
+
+// ── EXPORT PDF ───────────────────────────────────────────────────
+function expPDF(){
+  if(!S.rds.length){notify('No readings to export','err');return;}
+  const{jsPDF}=window.jspdf;
+  const doc=new jsPDF({orientation:'landscape',unit:'mm',format:'a4'});
+  doc.setFillColor(7,9,13);doc.rect(0,0,297,36,'F');
+  doc.setTextColor(240,160,32);doc.setFontSize(14);doc.setFont('helvetica','bold');
+  doc.text('RASTRA — NHAI RETROREFLECTIVITY INSPECTION REPORT',13,11);
+  doc.setFontSize(8);doc.setFont('helvetica','normal');doc.setTextColor(122,148,168);
+  doc.text('Road Analysis & Safety Tracking for Reflective Assessment | IRC 67:2012 / IRC 35:2015 | 2.2 m Multi-Channel Survey',13,17);
+  doc.text(`Generated: ${new Date().toLocaleString('en-IN')} | Distance: ${S.dist.toFixed(0)} m | Readings: ${S.rds.length}`,13,23);
+  const pass=S.rds.filter(r=>r.pass).length,fail=S.rds.length-pass;
+  const avg=(S.rds.map(r=>r.val).reduce((a,b)=>a+b,0)/S.rds.length).toFixed(1);
+  doc.text(`Pass: ${pass} | Fail: ${fail} | Pass Rate: ${((pass/S.rds.length)*100).toFixed(1)}% | Avg RL: ${avg} mcd/lx·m²`,13,29);
+  const dr=S.rds.filter(r=>r.cond?.s==='dry'),wr=S.rds.filter(r=>r.cond?.s==='wet');
+  doc.text(`Dry: ${dr.length} rdg, ${dr.length?((dr.filter(r=>r.pass).length/dr.length)*100).toFixed(0):0}% pass | Wet: ${wr.length} rdg, ${wr.length?((wr.filter(r=>r.pass).length/wr.length)*100).toFixed(0):0}% pass`,13,34);
+  doc.autoTable({
+    startY:40,
+    head:[['#','Dist(m)','RL(mcd/lx·m²)','Min','IRC Status','Asset','Channel','Conditions','Time','Lat','Lng','Chainage']],
+    body:S.rds.map(r=>[r.id,r.dist.toFixed(1),r.val.toFixed(2),r.min,r.pass?'PASS':'FAIL',
+      A[r.asset]?.label||r.asset,r.chLabel||r.ch||'—',condStr(r.cond||{}),r.time||'—',
+      r.lat?.toFixed(5)||'—',r.lng?.toFixed(5)||'—',r.chain||'—']),
+    styles:{fontSize:6.5,cellPadding:1.8,fillColor:[17,24,32],textColor:[122,148,168]},
+    headStyles:{fillColor:[24,34,46],textColor:[64,80,96],fontStyle:'bold',fontSize:6},
+    alternateRowStyles:{fillColor:[24,34,46]},
+    didParseCell:d=>{if(d.column.index===4&&d.section==='body'){
+      d.cell.styles.fontStyle='bold';
+      d.cell.styles.textColor=d.cell.raw==='PASS'?[20,200,100]:[240,64,64];}},
+    margin:{left:6,right:6},tableWidth:285
+  });
+  for(let i=1;i<=doc.internal.getNumberOfPages();i++){
+    doc.setPage(i);doc.setFontSize(6);doc.setTextColor(64,80,96);
+    doc.text('NHAI RASTRA | Retroreflectivity Inspection | IRC 67:2012 / IRC 35:2015 | Confidential',10,200);
+    doc.text(`Page ${i}/${doc.internal.getNumberOfPages()}`,278,200);
+  }
+  doc.save(`NHAI_RASTRA_${new Date().toISOString().slice(0,10)}.pdf`);
+  notify('PDF saved','ok');
+}
+
+// ── EXPORT CSV ───────────────────────────────────────────────────
+function expCSV(){
+  if(!S.rds.length){notify('No readings to export','err');return;}
+  const h=['ID','Distance(m)','RL(mcd/lx·m²)','Min_IRC','Status','Asset','Channel','Surface','TimeOfDay','Lighting','Weather','DateTime','Lat','Lng','Acc(m)','Alt(m)','Chainage'];
+  const rows=S.rds.map(r=>[r.id,r.dist.toFixed(1),r.val.toFixed(2),r.min,r.pass?'PASS':'FAIL',
+    A[r.asset]?.label||r.asset,r.chLabel||r.ch||'',
+    r.cond?.s||'dry',r.cond?.t||'day',r.cond?.l||'lit',r.cond?.w||'clr',
+    r.time||'',r.lat?.toFixed(6)||'',r.lng?.toFixed(6)||'',r.acc?.toFixed(1)||'',r.alt?.toFixed(1)||'',r.chain||'']);
+  const csv=[h,...rows].map(r=>r.join(',')).join('\n');
+  const a=Object.assign(document.createElement('a'),{
+    href:URL.createObjectURL(new Blob([csv],{type:'text/csv'})),
+    download:`NHAI_RASTRA_${new Date().toISOString().slice(0,10)}.csv`
+  });
+  a.click();notify('CSV exported','ok');
+}
+
+// ── NOTIFICATION ─────────────────────────────────────────────────
+let _nRef;
+function notify(msg,type='info'){
+  const el=id('notif');el.textContent=msg;el.className='show '+type;
+  clearTimeout(_nRef);_nRef=setTimeout(()=>el.classList.remove('show'),3500);
+}
+
+// ── HELPER ───────────────────────────────────────────────────────
+function id(i){return document.getElementById(i);}
+
+// ── DEMO DATA ENGINE ─────────────────────────────────────────────
+// Produces a realistic multi-channel dataset along actual road geometry.
+// For each road point, genChannelReadings() fires multiple cross-section channels
+// (both edge markings, centre lane, plus probabilistic: studs, signs, gantry, delineators).
+// Condition transitions: dry/day → wet/day → dry/night → wet/night
+const DEMO_CONDS=[
+  {s:'dry',t:'day', l:'lit', w:'clr'},
+  {s:'wet',t:'day', l:'lit', w:'rain'},
+  {s:'dry',t:'ngt', l:'unl', w:'clr'},
+  {s:'wet',t:'ngt', l:'unl', w:'fog'}
+];
+function buildDemo(roadPts){
+  // Walk every point; forced-insert signs/gantry at key chainage positions
+  const rds=[];
+  const start=new Date(2026,3,21,8,30,0);
+  const total=Math.min(roadPts.length,180);
+  // Pre-compute bearings for each point
+  const brngs=roadPts.map((p,i)=>{
+    if(i<roadPts.length-1)return bearing(p,roadPts[i+1]);
+    return i>0?bearing(roadPts[i-1],p):0;
+  });
+  for(let i=0;i<total;i++){
+    const cond=DEMO_CONDS[i<50?0:i<90?1:i<130?2:3];
+    const{lat,lng}=roadPts[i];
+    const brng=brngs[i];
+    const dist=i*D_INT;
+    const chain=`NH-44 KM 840+${dist.toFixed(0).padStart(3,'0')}`;
+    const t=new Date(start.getTime()+i*8200);
+    // Generate standard cross-section channels
+    const channels=genChannelReadings(lat,lng,dist,cond,i);
+    // At specific intervals, force a sign or gantry reading
+    if([0,30,60,90,120,150].includes(i)){
+      const signAsset=i===60||i===120?'s3':'s2';
+      const mn=thr(signAsset,cond.s);
+      const factor=i<60?1.4:i<100?1.05:0.8;
+      let val=Math.max(4,mn*factor+(Math.random()-.2)*mn*0.3);
+      if(cond.s==='wet')val*=0.48;
+      channels.push({asset:signAsset,val,min:mn,pass:val>=mn,dist,cond:{...cond},
+        lat,lng,lateralM:-5.5,ch:'ls',chLabel:'Left Road Sign',acc:1.8,alt:308});
+    }
+    if(i===80||i===160){
+      const mn=thr('gnt',cond.s);
+      let val=Math.max(4,mn*1.1+(Math.random()-.2)*mn*0.25);
+      if(cond.s==='wet')val*=0.48;
+      channels.push({asset:'gnt',val,min:mn,pass:val>=mn,dist,cond:{...cond},
+        lat,lng,lateralM:0,ch:'gnt',chLabel:'Gantry Sign',acc:1.8,alt:308});
+    }
+    channels.forEach(r=>{
+      r.id=rds.length+1;r.time=t.toLocaleString('en-IN',{hour12:false});
+      r.chain=chain;r.brng=brng;r.acc=r.acc||1.8;r.alt=r.alt||308;
+    });
+    rds.push(...channels);
+  }
+  return rds;
+}
+
+// ── OSM ROAD FETCH & INTERPOLATION ───────────────────────────────
+function _hav2(a,b){
+  const R=6371000,d2r=Math.PI/180,dL=(b.lat-a.lat)*d2r,dG=(b.lng-a.lng)*d2r;
+  const x=Math.sin(dL/2)**2+Math.cos(a.lat*d2r)*Math.cos(b.lat*d2r)*Math.sin(dG/2)**2;
+  return R*2*Math.atan2(Math.sqrt(x),Math.sqrt(1-x));
+}
+function interp(nodes,step,max){
+  const pts=[];let si=0,left=0;
+  while(pts.length<max&&si<nodes.length-1){
+    const a=nodes[si],b=nodes[si+1],seg=_hav2(a,b);
+    if(seg<0.001){si++;left=0;continue;}
+    let d=left;
+    while(d<=seg&&pts.length<max){
+      const t=d/seg;
+      pts.push({lat:a.lat+(b.lat-a.lat)*t,lng:a.lng+(b.lng-a.lng)*t});
+      d+=step;
+    }
+    left=d-seg;si++;
+  }
+  return pts;
+}
+// Fallback NH-44 OSM nodes (Wardha Road south Nagpur — surveyed from OSM)
+const FB_NODES=[
+  {lat:21.1088,lng:79.0476},{lat:21.1061,lng:79.0452},{lat:21.1034,lng:79.0428},
+  {lat:21.1007,lng:79.0404},{lat:21.0980,lng:79.0380},{lat:21.0953,lng:79.0356},
+  {lat:21.0926,lng:79.0332},{lat:21.0899,lng:79.0308},{lat:21.0872,lng:79.0284},
+  {lat:21.0845,lng:79.0260},{lat:21.0818,lng:79.0236},{lat:21.0791,lng:79.0212},
+  {lat:21.0764,lng:79.0188},{lat:21.0737,lng:79.0164},{lat:21.0710,lng:79.0140},
+  {lat:21.0683,lng:79.0116},{lat:21.0656,lng:79.0092},{lat:21.0629,lng:79.0068},
+  {lat:21.0602,lng:79.0044},{lat:21.0575,lng:79.0020}
+];
+async function fetchOSMRoad(){
+  const q=`[out:json][timeout:25];(way["highway"~"trunk|primary"]["ref"~"NH.?44"](21.00,78.95,21.20,79.15);way["highway"="trunk"](21.05,79.00,21.15,79.12););out geom;`;
+  const r=await fetch('https://overpass-api.de/api/interpreter',{method:'POST',
+    headers:{'Content-Type':'application/x-www-form-urlencoded'},body:'data='+encodeURIComponent(q)});
+  if(!r.ok)throw new Error('HTTP '+r.status);
+  const j=await r.json();
+  const ways=(j.elements||[]).filter(e=>e.type==='way'&&e.geometry?.length>=6);
+  if(!ways.length)throw new Error('No ways');
+  ways.sort((a,b)=>{
+    const len=w=>w.geometry.reduce((s,g,i)=>i?s+_hav2({lat:w.geometry[i-1].lat,lng:w.geometry[i-1].lon},{lat:g.lat,lng:g.lon}):0,0);
+    return len(b)-len(a);
+  });
+  let nodes=ways[0].geometry.map(g=>({lat:g.lat,lng:g.lon}));
+  if(nodes[0].lat>nodes[nodes.length-1].lat)nodes.reverse();
+  return nodes;
+}
+
+function injectDemo(rds){
+  clearAll();
+  S.demoOn=true;id('tdemo').classList.add('show');
+  S.sess=true;S.t0=Date.now()-7200000;
+  clearInterval(S.tiRef);
+  S.tiRef=setInterval(()=>{
+    const e=Date.now()-S.t0,s=Math.floor(e/1000)%60,m=Math.floor(e/60000)%60,h=Math.floor(e/3600000);
+    id('stimer').textContent=h?`${h}:${p2(m)}:${p2(s)}`:`${p2(m)}:${p2(s)}`;
+  },1000);
+  id('sbtn').textContent='■ Stop';id('sbtn').style.background='#F04040';
+  S.lastMarks={};
+  rds.forEach(r=>{S.rds.push(r);addToList(r);addToLog(r);updChart(r);toMap(r);});
+  S.dist=rds[rds.length-1].dist||0;
+  updStats();updDonut();updCB();updScan();
+  const last=rds[rds.length-1];
+  updGauge(last.val,last.min,A[last.asset]?.gmax||500);
+  S.gps.pos={coords:{latitude:last.lat,longitude:last.lng,accuracy:1.8,altitude:308}};
+  updGPS(S.gps.pos);id('gdot').className='dot on';id('gtxt').textContent='GPS: Demo';
+  setBLE('on','RASTRA-Demo');
+  setTimeout(fitMap,350);
+}
+
+async function loadBuiltin(){
+  closeM('m-demo');
+  notify('Fetching NH-44 road geometry…','info');
+  let nodes;
+  try{nodes=await fetchOSMRoad();}
+  catch(e){console.warn('OSM failed, using fallback:',e);nodes=FB_NODES;}
+  const roadPts=interp(nodes,D_INT,220);
+  if(roadPts.length<10){notify('Road fetch failed — try again','err');return;}
+  const rds=buildDemo(roadPts);
+  injectDemo(rds);
+  notify(`Demo loaded — ${rds.length} readings (multi-channel) · NH-44 · IRC 67/35`,'ok');
+}
+
+function loadCSV(inp){
+  const f=inp.files[0]; if(!f)return;
+  const fr=new FileReader();
+  fr.onload=e=>{
+    const lines=e.target.result.trim().split('\n');
+    if(lines.length<2){notify('Empty CSV','err');return;}
+    const REV={}; Object.entries(A).forEach(([k,v])=>REV[v.label]=k);
+    const rds=[];
+    lines.slice(1).forEach((line,idx)=>{
+      const c=line.split(',');
+      if(c.length<11)return;
+      const k=REV[c[5]?.trim()]||'mwn';
+      const val=parseFloat(c[2]); if(isNaN(val)||val<0)return;
+      const cond={s:c[6]?.trim()||'dry',t:c[7]?.trim()||'day',l:c[8]?.trim()||'lit',w:c[9]?.trim()||'clr'};
+      const mn=thr(k,cond.s);
+      const xch=XSECT.find(x=>x.asset===k)||{ch:k,chLabel:A[k]?.label||k,lateralM:0};
+      rds.push({id:idx+1,val,min:mn,asset:k,pass:val>=mn,dist:parseFloat(c[1])||idx*D_INT,
+        cond,chain:c[15]?.trim()||'',time:c[10]?.trim()||'',
+        lat:parseFloat(c[11])||null,lng:parseFloat(c[12])||null,
+        acc:parseFloat(c[13])||null,alt:parseFloat(c[14])||null,
+        ch:xch.ch,chLabel:xch.chLabel,lateralM:xch.lateralM});
+    });
+    if(!rds.length){notify('No valid rows in CSV','err');return;}
+    injectDemo(rds);
+    notify(`CSV loaded — ${rds.length} readings`,'ok');
+    inp.value='';
+  };
+  fr.readAsText(f);
+}
+</script>
+</body>
+</html>
